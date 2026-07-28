@@ -146,6 +146,7 @@
   <header class="top">
     <div class="moon">🌙</div>
     <h1 class="title" style="flex:1">잠자리 교과서 이야기<small>책 읽어주는 AI · 레벨이 오를수록 이야기가 깊어져요</small></h1>
+    <button class="gear" id="installBtn" onclick="doInstall()" title="휴대폰에 설치" style="display:none">📲 설치</button>
     <button class="gear" onclick="openSettings()" title="자연 목소리 설정">⚙️</button>
   </header>
 
@@ -2515,7 +2516,16 @@ function updateDoneBtn(){const b=document.getElementById('doneBtn');if(!b||!curT
 document.getElementById('rate').addEventListener('input',e=>{document.getElementById('rateVal').textContent=parseFloat(e.target.value).toFixed(2)+'배';});
 
 /* 목소리 */
-let voices=[];
+let voices=[], voiceChosen=false;
+function pickBestKo(ko){
+  const score=v=>{let s=0;const n=(v.name||'').toLowerCase();
+    if(v.localService===false)s+=5;
+    if(/natural|neural|online/.test(n))s+=5;
+    if(/sunhi|yuna|heami|선희|유나|나라|서현/.test(n))s+=2;
+    if(/google/.test(n))s+=1;
+    return s;};
+  return ko.slice().sort((a,b)=>score(b)-score(a))[0];
+}
 function loadVoices(){voices=synth.getVoices();
   const ko=voices.filter(v=>/ko/i.test(v.lang));
   const en=voices.filter(v=>/en/i.test(v.lang));
@@ -2525,9 +2535,11 @@ function loadVoices(){voices=synth.getVoices();
   list.forEach(v=>{const o=document.createElement('option');o.value=v.name;
     const tag=/ko/i.test(v.lang)?' (한국어)':(/en/i.test(v.lang)?' (English)':' ('+v.lang+')');
     o.textContent=v.name.replace(/Microsoft |Google /,'')+tag;sel.appendChild(o);});
+  if(ko.length && !voiceChosen){const best=pickBestKo(ko);if(best)sel.value=best.name;}
   const hint=document.getElementById('voiceHint');
-  hint.innerHTML=ko.length?'💡 한국어 이야기는 한국어 목소리, 영어 이야기는 English 목소리를 골라 주세요. 취침용 속도는 0.75~0.9배가 편안해요.':'⚠️ 이 브라우저에 한국어 음성이 없어요. <b>Chrome</b> 또는 <b>Edge</b>에서 열면 자연스러운 목소리가 나와요.';}
+  hint.innerHTML=ko.length?'💡 무료 목소리 중 가장 자연스러운 걸 자동으로 골라 뒀어요. <b>엣지(Edge)</b>에서 열면 더 자연스러워요. 취침용 속도는 0.75~0.9배가 편안해요.':'⚠️ 이 브라우저에 한국어 음성이 없어요. <b>Chrome</b> 또는 <b>Edge</b>에서 열면 자연스러운 목소리가 나와요.';}
 loadVoices();if(synth)synth.onvoiceschanged=loadVoices;
+document.getElementById('voiceSel').addEventListener('change',()=>{voiceChosen=true;});
 
 /* 새 이야기 */
 function copyPrompt(){
@@ -2607,6 +2619,21 @@ async function toggleAIPlay(){
     await audioEl.play();pb.textContent='❚❚';setTimer();
   }catch(e){pb.textContent='▶';toast('목소리 실패: '+(e.message||e));}}
 document.getElementById('setProvider').addEventListener('change',toggleProviderFields);
+
+/* ===== 휴대폰 설치(PWA) ===== */
+let deferredPrompt=null;
+function isStandalone(){try{return window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}catch(e){return false;}}
+function showInstall(){const b=document.getElementById('installBtn');if(b&&!isStandalone())b.style.display='inline-block';}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;showInstall();});
+window.addEventListener('appinstalled',()=>{const b=document.getElementById('installBtn');if(b)b.style.display='none';toast('설치됐어요! 홈 화면 아이콘으로 열어보세요 🌙');});
+async function doInstall(){
+  if(deferredPrompt){deferredPrompt.prompt();try{await deferredPrompt.userChoice;}catch(e){}deferredPrompt=null;return;}
+  const ua=navigator.userAgent||'';
+  if(/iphone|ipad|ipod/i.test(ua)){alert('아이폰 설치 방법\n\n1) 사파리 아래쪽 공유 버튼(네모에서 위로 화살표)을 누르세요.\n2) 목록에서 \'홈 화면에 추가\'를 누르세요.\n3) \'추가\'를 누르면 달 모양 앱 아이콘이 생겨요.');}
+  else{alert('안드로이드 설치 방법\n\n1) 브라우저 오른쪽 위 메뉴(점 세 개)를 누르세요.\n2) \'앱 설치\' 또는 \'홈 화면에 추가\'를 누르세요.\n3) \'설치\'를 누르면 달 모양 앱 아이콘이 생겨요.');}
+}
+if(!isStandalone()) showInstall();
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
 
 renderHome();
 </script>
