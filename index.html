@@ -2491,7 +2491,7 @@ function openStory(t){
   const L=LEVELS[curLevel];
   document.getElementById('rTitle').textContent=t.title;
   document.getElementById('rUnit').textContent=L.emoji+' '+L.name+' 레벨 · '+t.unit;
-  curText=t.levels[L.key];if(audioEl){audioEl.pause();}audioEl=null;
+  curText=t.levels[L.key];if(audioEl){audioEl.pause();try{audioEl.currentTime=0;}catch(e){}if(audioEl.dataset)audioEl.dataset.ck='';}
   sentences=splitSentences(t.levels[L.key]);
   const box=document.getElementById('storyBox');box.innerHTML='';let p=document.createElement('p');
   sentences.forEach((tx,i)=>{if(tx==='\n'){if(p.childNodes.length){box.appendChild(p);p=document.createElement('p');}return;}
@@ -2658,20 +2658,29 @@ async function testVoice(){
   msg.textContent='목소리를 불러오는 중...';
   try{const url=await synthTTS('안녕하세요. 오늘 밤도 포근한 이야기로 함께할게요.',cfg);new Audio(url).play();msg.textContent='잘 들리면 성공이에요. 저장을 눌러 주세요.';}
   catch(e){msg.textContent='실패: '+(e.message||e)+' — 키나 결제/사용 설정을 확인해 주세요.';}}
+const SILENT_WAV='data:audio/wav;base64,UklGRmQBAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
+let audioUnlocked=false;
+function ensureAudio(){
+  if(!audioEl){audioEl=new Audio();audioEl.onended=()=>{const pb=document.getElementById('playBtn');if(pb)pb.textContent='▶';if(curTopic)markHeard();};}
+  return audioEl;}
+function currentCk(){const cfg=curCfg();return curTopic.id+'|'+LEVELS[curLevel].key+'|'+cfg.provider+'|'+cfg.voice+'|'+(cfg.model||'');}
+function unlockAudio(){ // 사용자 탭 순간에 무음 재생으로 오디오 잠금 해제(모바일)
+  try{const a=ensureAudio();a.src=SILENT_WAV;const p=a.play();if(p&&p.then)p.then(()=>{audioUnlocked=true;}).catch(()=>{});}catch(e){}}
 async function toggleAIPlay(){
   const pb=document.getElementById('playBtn');
-  if(audioEl&&!audioEl.paused){audioEl.pause();pb.textContent='▶';return;}
-  if(audioEl&&audioEl.paused&&audioEl.src){audioEl.play();pb.textContent='❚❚';setTimer();return;}
-  if(!curText){return;}
-  pb.textContent='…';
+  const a=ensureAudio();
+  if(!a.paused){a.pause();pb.textContent='▶';return;}
+  if(!curText)return;
+  const ck=currentCk();
+  if(a.dataset.ck===ck && a.src && a.currentTime>0){a.play();pb.textContent='❚❚';setTimer();return;}
+  unlockAudio();              // 반드시 탭 직후(동기)에 호출
+  pb.textContent='…';toast('자연 목소리를 만드는 중이에요…');
   const cfg=curCfg();
-  const ck=curTopic.id+'|'+LEVELS[curLevel].key+'|'+cfg.provider+'|'+cfg.voice+'|'+(cfg.model||'');
   try{
     let url=aiAudioCache[ck];
     if(!url){url=await synthTTS(curText,cfg);aiAudioCache[ck]=url;}
-    audioEl=new Audio(url);
-    audioEl.onended=()=>{pb.textContent='▶';if(curTopic)markHeard();};
-    await audioEl.play();pb.textContent='❚❚';setTimer();
+    a.src=url;a.dataset.ck=ck;
+    await a.play();pb.textContent='❚❚';setTimer();
   }catch(e){pb.textContent='▶';toast('목소리 실패: '+(e.message||e));}}
 document.getElementById('setProvider').addEventListener('change',toggleProviderFields);
 
