@@ -137,12 +137,23 @@
   .ssub{font-size:12px;color:var(--sub);line-height:1.55;margin:6px 0 0}
   .srow{display:flex;gap:10px;margin-top:16px}
   .srow .btn{flex:1;margin-top:0}
+  #inappBanner{background:linear-gradient(180deg,#3a2f10,#2a2410);border:1px solid #7a5f1f;color:#ffe6ad;border-radius:14px;padding:13px 14px;margin-bottom:14px;font-size:13px;line-height:1.55}
+  #inappBanner .ib-actions{display:flex;gap:8px;margin-top:10px}
+  #inappBanner button{background:var(--accent);color:#3a2a00;border:none;border-radius:10px;padding:8px 12px;font-weight:800;font-size:12.5px;cursor:pointer}
+  #inappBanner button.x{background:transparent;color:#ffe6ad;border:1px solid #7a5f1f}
   .foot{text-align:center;color:var(--sub);font-size:11.5px;margin-top:26px;line-height:1.6}
 </style>
 </head>
 <body>
 <div class="stars" id="stars"></div>
 <div class="wrap">
+  <div id="inappBanner" style="display:none">
+    <span class="msg"></span>
+    <div class="ib-actions">
+      <button onclick="copyLink()">🔗 링크 복사</button>
+      <button onclick="closeBanner()" class="x">✕</button>
+    </div>
+  </div>
   <header class="top">
     <div class="moon">🌙</div>
     <h1 class="title" style="flex:1">잠자리 교과서 이야기<small>책 읽어주는 AI · 레벨이 오를수록 이야기가 깊어져요</small></h1>
@@ -248,7 +259,8 @@
     <label>목소리 방식</label>
     <select id="setProvider">
       <option value="browser">브라우저 기본 (무료)</option>
-      <option value="openai">OpenAI 자연 목소리 (유료·키 필요)</option>
+      <option value="openai">OpenAI · ChatGPT 목소리 (유료·키)</option>
+      <option value="gemini">Google Gemini 목소리 (유료·키)</option>
     </select>
     <div id="openaiFields" style="display:none">
       <label>OpenAI API 키</label>
@@ -269,12 +281,27 @@
       </select>
       <button class="btn ghost" style="width:100%" onclick="testVoice()">🔊 목소리 미리듣기</button>
     </div>
+    <div id="geminiFields" style="display:none">
+      <label>Gemini API 키</label>
+      <input id="setGKey" type="password" placeholder="AIza...">
+      <label>목소리</label>
+      <select id="setGVoice">
+        <option value="Aoede">Aoede · 부드러운 여성</option>
+        <option value="Kore">Kore · 차분한 여성</option>
+        <option value="Leda">Leda · 밝은 여성</option>
+        <option value="Vindemiatrix">Vindemiatrix · 다정한</option>
+        <option value="Sulafat">Sulafat · 따뜻한</option>
+        <option value="Puck">Puck · 경쾌한</option>
+        <option value="Charon">Charon · 차분한 남성</option>
+      </select>
+      <button class="btn ghost" style="width:100%" onclick="testVoice()">🔊 목소리 미리듣기</button>
+    </div>
     <div class="srow">
       <button class="btn" onclick="saveSettings()">저장</button>
       <button class="btn ghost" onclick="closeSettings()">닫기</button>
     </div>
     <p class="ssub" id="setMsg"></p>
-    <p class="ssub">키 발급: platform.openai.com 에 가입 → API keys 에서 새 키 생성 → 결제수단 등록. 키는 남에게 보여주지 마세요.</p>
+    <p class="ssub">키 발급 — OpenAI: platform.openai.com → API keys. Gemini: aistudio.google.com → 'Get API key'. 키는 이 기기에만 저장되고, 남에게 보여주지 마세요.</p>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -2567,53 +2594,81 @@ let toastT=null;
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');
   if(toastT)clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),2800);}
 
-/* ===== 자연 목소리(OpenAI) 설정 ===== */
+/* ===== 자연 목소리(OpenAI / Gemini) 설정 ===== */
 const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
-let ttsCfg={provider:store.get('tts_provider','browser'),key:store.get('tts_key',''),voice:store.get('tts_voice','nova'),model:store.get('tts_model','gpt-4o-mini-tts')};
+let ttsCfg={
+  provider:store.get('tts_provider','browser'),
+  openaiKey:store.get('tts_openai_key',''),openaiVoice:store.get('tts_openai_voice','nova'),openaiModel:store.get('tts_openai_model','gpt-4o-mini-tts'),
+  geminiKey:store.get('tts_gemini_key',''),geminiVoice:store.get('tts_gemini_voice','Aoede')
+};
 let aiAudioCache={};
-function usingAI(){return ttsCfg.provider==='openai' && ttsCfg.key.trim().length>0;}
+function usingAI(){if(ttsCfg.provider==='openai')return ttsCfg.openaiKey.trim().length>0;if(ttsCfg.provider==='gemini')return ttsCfg.geminiKey.trim().length>0;return false;}
+function curCfg(){if(ttsCfg.provider==='gemini')return {provider:'gemini',key:ttsCfg.geminiKey,voice:ttsCfg.geminiVoice};return {provider:'openai',key:ttsCfg.openaiKey,voice:ttsCfg.openaiVoice,model:ttsCfg.openaiModel};}
 function openSettings(){
   document.getElementById('setProvider').value=ttsCfg.provider;
-  document.getElementById('setKey').value=ttsCfg.key;
-  document.getElementById('setVoice').value=ttsCfg.voice;
-  document.getElementById('setModel').value=ttsCfg.model;
+  document.getElementById('setKey').value=ttsCfg.openaiKey;
+  document.getElementById('setVoice').value=ttsCfg.openaiVoice;
+  document.getElementById('setModel').value=ttsCfg.openaiModel;
+  document.getElementById('setGKey').value=ttsCfg.geminiKey;
+  document.getElementById('setGVoice').value=ttsCfg.geminiVoice;
   toggleProviderFields();document.getElementById('setMsg').textContent='';
   document.getElementById('settingsModal').style.display='flex';}
 function closeSettings(){document.getElementById('settingsModal').style.display='none';}
-function toggleProviderFields(){document.getElementById('openaiFields').style.display=document.getElementById('setProvider').value==='openai'?'block':'none';}
+function toggleProviderFields(){const p=document.getElementById('setProvider').value;
+  document.getElementById('openaiFields').style.display=p==='openai'?'block':'none';
+  document.getElementById('geminiFields').style.display=p==='gemini'?'block':'none';}
 function saveSettings(){
   ttsCfg.provider=document.getElementById('setProvider').value;
-  ttsCfg.key=document.getElementById('setKey').value.trim();
-  ttsCfg.voice=document.getElementById('setVoice').value;
-  ttsCfg.model=document.getElementById('setModel').value;
-  store.set('tts_provider',ttsCfg.provider);store.set('tts_key',ttsCfg.key);store.set('tts_voice',ttsCfg.voice);store.set('tts_model',ttsCfg.model);
+  ttsCfg.openaiKey=document.getElementById('setKey').value.trim();ttsCfg.openaiVoice=document.getElementById('setVoice').value;ttsCfg.openaiModel=document.getElementById('setModel').value;
+  ttsCfg.geminiKey=document.getElementById('setGKey').value.trim();ttsCfg.geminiVoice=document.getElementById('setGVoice').value;
+  store.set('tts_provider',ttsCfg.provider);store.set('tts_openai_key',ttsCfg.openaiKey);store.set('tts_openai_voice',ttsCfg.openaiVoice);store.set('tts_openai_model',ttsCfg.openaiModel);store.set('tts_gemini_key',ttsCfg.geminiKey);store.set('tts_gemini_voice',ttsCfg.geminiVoice);
   aiAudioCache={};if(audioEl){audioEl.pause();audioEl=null;}
   closeSettings();
   toast(usingAI()?'자연 목소리로 저장했어요 🎙️':'브라우저 기본 목소리로 저장했어요');}
-async function synthAI(text,cfg){
-  cfg=cfg||ttsCfg;
-  const body={model:cfg.model,voice:cfg.voice,input:text};
-  if(cfg.model==='gpt-4o-mini-tts')body.instructions='따뜻하고 느리며 다정한 잠자리 목소리로, 아이를 재우듯 부드럽게 읽어 주세요.';
+function b64ToBytes(b64){const bin=atob(b64);const n=bin.length;const a=new Uint8Array(n);for(let i=0;i<n;i++)a[i]=bin.charCodeAt(i);return a;}
+function pcmToWav(bytes,rate){const nc=1,bps=16,ba=nc*bps/8,br=rate*ba,ds=bytes.length;const buf=new ArrayBuffer(44+ds),v=new DataView(buf);
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  w(0,'RIFF');v.setUint32(4,36+ds,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,nc,true);v.setUint32(24,rate,true);v.setUint32(28,br,true);v.setUint16(32,ba,true);v.setUint16(34,bps,true);w(36,'data');v.setUint32(40,ds,true);
+  new Uint8Array(buf,44).set(bytes);return new Blob([buf],{type:'audio/wav'});}
+async function synthOpenAI(text,cfg){
+  const body={model:cfg.model||'gpt-4o-mini-tts',voice:cfg.voice,input:text};
+  if((cfg.model||'gpt-4o-mini-tts')==='gpt-4o-mini-tts')body.instructions='따뜻하고 느리며 다정한 잠자리 목소리로, 아이를 재우듯 부드럽게 읽어 주세요.';
   const res=await fetch('https://api.openai.com/v1/audio/speech',{method:'POST',headers:{'Authorization':'Bearer '+cfg.key.trim(),'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!res.ok){let m='오류 '+res.status;try{const j=await res.json();if(j.error&&j.error.message)m=j.error.message;}catch(e){}throw new Error(m);}
   const blob=await res.blob();return URL.createObjectURL(blob);}
+async function synthGemini(text,cfg){
+  const model='gemini-2.5-flash-preview-tts';
+  const url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(cfg.key.trim());
+  const body={contents:[{parts:[{text:'다음 이야기를 따뜻하고 느리게, 아이를 재우듯 다정하게 읽어 주세요.\n\n'+text}]}],generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:cfg.voice}}}}};
+  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){let m='오류 '+res.status;try{const j=await res.json();if(j.error&&j.error.message)m=j.error.message;}catch(e){}throw new Error(m);}
+  const j=await res.json();
+  const parts=(j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[];
+  const pd=parts.find(p=>p.inlineData&&p.inlineData.data);
+  if(!pd)throw new Error('음성 데이터를 받지 못했어요');
+  const mime=pd.inlineData.mimeType||'';const rm=/rate=(\d+)/.exec(mime);const rate=rm?parseInt(rm[1],10):24000;
+  return URL.createObjectURL(pcmToWav(b64ToBytes(pd.inlineData.data),rate));}
+async function synthTTS(text,cfg){return cfg.provider==='gemini'?synthGemini(text,cfg):synthOpenAI(text,cfg);}
 async function testVoice(){
-  const cfg={provider:'openai',key:document.getElementById('setKey').value.trim(),voice:document.getElementById('setVoice').value,model:document.getElementById('setModel').value};
+  const p=document.getElementById('setProvider').value;let cfg;
+  if(p==='gemini')cfg={provider:'gemini',key:document.getElementById('setGKey').value.trim(),voice:document.getElementById('setGVoice').value};
+  else cfg={provider:'openai',key:document.getElementById('setKey').value.trim(),voice:document.getElementById('setVoice').value,model:document.getElementById('setModel').value};
   const msg=document.getElementById('setMsg');
   if(!cfg.key){msg.textContent='먼저 API 키를 입력해 주세요.';return;}
   msg.textContent='목소리를 불러오는 중...';
-  try{const url=await synthAI('안녕하세요. 오늘 밤도 포근한 이야기로 함께할게요.',cfg);new Audio(url).play();msg.textContent='잘 들리면 성공이에요. 저장을 눌러 주세요.';}
-  catch(e){msg.textContent='실패: '+(e.message||e)+' — 키나 결제 설정을 확인해 주세요.';}}
+  try{const url=await synthTTS('안녕하세요. 오늘 밤도 포근한 이야기로 함께할게요.',cfg);new Audio(url).play();msg.textContent='잘 들리면 성공이에요. 저장을 눌러 주세요.';}
+  catch(e){msg.textContent='실패: '+(e.message||e)+' — 키나 결제/사용 설정을 확인해 주세요.';}}
 async function toggleAIPlay(){
   const pb=document.getElementById('playBtn');
   if(audioEl&&!audioEl.paused){audioEl.pause();pb.textContent='▶';return;}
   if(audioEl&&audioEl.paused&&audioEl.src){audioEl.play();pb.textContent='❚❚';setTimer();return;}
   if(!curText){return;}
   pb.textContent='…';
-  const ck=curTopic.id+'|'+LEVELS[curLevel].key+'|'+ttsCfg.voice+'|'+ttsCfg.model;
+  const cfg=curCfg();
+  const ck=curTopic.id+'|'+LEVELS[curLevel].key+'|'+cfg.provider+'|'+cfg.voice+'|'+(cfg.model||'');
   try{
     let url=aiAudioCache[ck];
-    if(!url){url=await synthAI(curText);aiAudioCache[ck]=url;}
+    if(!url){url=await synthTTS(curText,cfg);aiAudioCache[ck]=url;}
     audioEl=new Audio(url);
     audioEl.onended=()=>{pb.textContent='▶';if(curTopic)markHeard();};
     await audioEl.play();pb.textContent='❚❚';setTimer();
@@ -2634,6 +2689,23 @@ async function doInstall(){
 }
 if(!isStandalone()) showInstall();
 if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(function(){});}catch(e){}}
+
+/* ===== 앱 내부 브라우저(카톡 등) 안내 배너 ===== */
+function copyLink(){const t=location.href;
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(()=>toast('링크를 복사했어요! 크롬/사파리 주소창에 붙여넣어 여세요')).catch(()=>fallbackCopy(t,'링크를 복사했어요!'));}
+  else fallbackCopy(t,'링크를 복사했어요!');}
+function closeBanner(){const el=document.getElementById('inappBanner');if(el)el.style.display='none';}
+(function(){
+  const ua=navigator.userAgent||'';
+  const inApp=/KAKAOTALK|DaumApps|NAVER|Line\/|Instagram|FBAN|FBAV|FB_IAB|BAND|Snapchat|Twitter|; wv\)/i.test(ua);
+  if(!inApp||isStandalone())return;
+  const el=document.getElementById('inappBanner');if(!el)return;
+  const ios=/iphone|ipad|ipod/i.test(ua);
+  el.querySelector('.msg').innerHTML='📱 여기서는 앱 설치가 안 돼요. '+(ios
+    ? '오른쪽 <b>아래 브라우저 아이콘</b>을 눌러 <b>Safari(사파리)</b>로 열어 주세요.'
+    : '오른쪽 <b>위 메뉴(⋮ 또는 점 세 개)</b>에서 <b>다른 브라우저로 열기</b>를 눌러 주세요.')+' 그러면 설치 버튼이 나와요.';
+  el.style.display='block';
+})();
 
 renderHome();
 </script>
